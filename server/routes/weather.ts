@@ -5,8 +5,8 @@ dotenv.config();
 
 const router = express.Router();
 
-// .env の API KEY を使用
-const API_KEY = process.env.OPENWEATHER_API_KEY!;
+// 本番では Vercel の環境変数を使う
+const API_KEY = process.env.OPENWEATHER_API_KEY;
 
 router.get("/", async (req, res) => {
   try {
@@ -18,6 +18,7 @@ router.get("/", async (req, res) => {
 
     const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&lang=ja&appid=${API_KEY}`;
 
+    // ⭐ Node18 以降は fetch が標準 → import 不要
     const response = await fetch(url);
     const data = await response.json();
 
