@@ -1,22 +1,27 @@
 // ======================================================
-// 🌟 FakeDB（StackBlitz） + NeonDB（本番）自動切り替え
+// 🌟 StackBlitz（開発）＝メモリDB
+// 🌟 Vercel（本番）＝NeonDB
 // ======================================================
 
-import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import pkg from 'pg';
+
 dotenv.config();
 
-// ======================================================
-// 🌟 StackBlitz 判定：DATABASE_URL が undefined なら FakeDB
-// ======================================================
-const isProduction = !!process.env.DATABASE_URL;
+const { Pool } = pkg;
 
-if (!isProduction) {
-  // ---------------------------------------------------
-  // 🧪 StackBlitz → ALWAYS FakeDB
-  // ---------------------------------------------------
-  console.log("🧪 Using Fake In-Memory DB (StackBlitz Mode)");
+// ------------------------------------------------------
+// ⭐ StackBlitz では外部DB接続できないため、強制的にメモリDB
+// ------------------------------------------------------
+const isStackBlitz =
+  typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'; // これで本番だけ false
 
+console.log('DB MODE:', isStackBlitz ? '🧪 Fake In-Memory DB' : '🌐 NeonDB');
+
+// ======================================================
+// 🧪 StackBlitz（開発モード）：Fake In-Memory DB
+// ======================================================
+if (isStackBlitz) {
   let memCalendar: any[] = [];
   let memKanban: any[] = [];
 
@@ -24,10 +29,10 @@ if (!isProduction) {
     const setMatch = sql.match(/SET([\s\S]*?)WHERE/i);
     if (!setMatch) return {};
     const setPart = setMatch[1].trim();
-    const keyValueParts = setPart.split(",").map((s) => s.trim());
+    const keyValueParts = setPart.split(',').map((s) => s.trim());
     const result: any = {};
     keyValueParts.forEach((part, i) => {
-      const [key] = part.split("=").map((s) => s.trim());
+      const [key] = part.split('=').map((s) => s.trim());
       result[key] = params[i];
     });
     return result;
@@ -37,13 +42,13 @@ if (!isProduction) {
     async query(sql: string, params: any[] = []) {
       sql = sql.trim();
 
-      // Calendar SELECT
-      if (sql.startsWith("SELECT") && sql.includes("calendar_events")) {
+      // ----- Calendar SELECT -----
+      if (sql.startsWith('SELECT') && sql.includes('calendar_events')) {
         return { rows: memCalendar, rowCount: memCalendar.length };
       }
 
-      // Calendar INSERT
-      if (sql.startsWith("INSERT INTO calendar_events")) {
+      // ----- Calendar INSERT -----
+      if (sql.startsWith('INSERT INTO calendar_events')) {
         const item = {
           id: memCalendar.length + 1,
           date: params[0],
@@ -55,21 +60,21 @@ if (!isProduction) {
         return { rows: [item], rowCount: 1 };
       }
 
-      // Calendar DELETE
-      if (sql.startsWith("DELETE FROM calendar_events")) {
+      // ----- Calendar DELETE -----
+      if (sql.startsWith('DELETE FROM calendar_events')) {
         const id = params[0];
         const before = memCalendar.length;
         memCalendar = memCalendar.filter((e) => e.id !== id);
         return { rows: [], rowCount: before - memCalendar.length };
       }
 
-      // Kanban SELECT
-      if (sql.startsWith("SELECT") && sql.includes("kanban_cards")) {
+      // ----- Kanban SELECT -----
+      if (sql.startsWith('SELECT') && sql.includes('kanban_cards')) {
         return { rows: memKanban, rowCount: memKanban.length };
       }
 
-      // Kanban INSERT
-      if (sql.startsWith("INSERT INTO kanban_cards")) {
+      // ----- Kanban INSERT -----
+      if (sql.startsWith('INSERT INTO kanban_cards')) {
         const item = {
           id: memKanban.length + 1,
           title: params[0],
@@ -77,7 +82,7 @@ if (!isProduction) {
           status: params[2],
           dateStart: params[3],
           dateEnd: params[4],
-          checklist: JSON.parse(params[5] || "[]"),
+          checklist: JSON.parse(params[5] || '[]'),
           created_at: new Date(),
           updated_at: new Date(),
         };
@@ -85,24 +90,23 @@ if (!isProduction) {
         return { rows: [item], rowCount: 1 };
       }
 
-      // Kanban UPDATE
-      if (sql.startsWith("UPDATE kanban_cards")) {
+      // ----- Kanban UPDATE -----
+      if (sql.startsWith('UPDATE kanban_cards')) {
         const id = params[params.length - 1];
         const item = memKanban.find((t) => t.id === id);
         if (!item) return { rows: [], rowCount: 0 };
 
         const fields = parseUpdate(sql, params);
 
-        if ("checklist" in fields && typeof fields.checklist === "string") {
+        if ('checklist' in fields && typeof fields.checklist === 'string') {
           fields.checklist = JSON.parse(fields.checklist);
         }
 
-        if ("date_start" in fields) {
+        if ('date_start' in fields) {
           fields.dateStart = fields.date_start;
           delete fields.date_start;
         }
-
-        if ("date_end" in fields) {
+        if ('date_end' in fields) {
           fields.dateEnd = fields.date_end;
           delete fields.date_end;
         }
@@ -113,8 +117,8 @@ if (!isProduction) {
         return { rows: [item], rowCount: 1 };
       }
 
-      // Kanban DELETE
-      if (sql.startsWith("DELETE FROM kanban_cards")) {
+      // ----- Kanban DELETE -----
+      if (sql.startsWith('DELETE FROM kanban_cards')) {
         const id = params[0];
         const before = memKanban.length;
         memKanban = memKanban.filter((t) => t.id !== id);
@@ -124,14 +128,13 @@ if (!isProduction) {
       return { rows: [], rowCount: 0 };
     },
   };
-}
 
+  // FakeDB モードはここで終了
+}
 // ======================================================
-// 🌍 本番環境 → NeonDB
+// 🌐 本番（Vercel）：NeonDB（PostgreSQL）
 // ======================================================
 else {
-  console.log("🌐 Using NeonDB (Production Mode)");
-
   export const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
